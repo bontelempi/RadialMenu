@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "id": "radialmenu",
+  "version": "1.0.0",
+  "name": "Radial Menu",
+  "description": "A customizable radial command menu for Hypixel SkyBlock",
+  "authors": ["YourName"],
+  "contact": {},
+  "license": "MIT",
+  "environment": "client",
+  "entrypoints": {
+    "client": [
+      {
+        "adapter": "kotlin",
+        "value": "com.yourname.radialmenu.RadialMenuMod"
+      }
+    ]
+  },
+  "mixins": [],
+  "depends": {
+    "fabricloader": ">=0.15.0",
+    "fabric-api": "*",
+    "fabric-language-kotlin": ">=1.10.0+kotlin.1.9.0",
+    "minecraft": "~1.21"
+  }
+}
