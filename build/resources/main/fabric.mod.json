@@ -3,8 +3,10 @@
   "id": "radialmenu",
   "version": "1.0.0",
   "name": "Radial Menu",
-  "description": "A customizable radial command menu for Hypixel SkyBlock",
-  "authors": ["YourName"],
+  "description": "A customizable radial command menu for Hypixel SkyBlock
+https://github.com/bontelempi/RadialMenu",
+  "icon": "icon.png",
+  "authors": ["bontelempi"],
   "contact": {},
   "license": "MIT",
   "environment": "client",
