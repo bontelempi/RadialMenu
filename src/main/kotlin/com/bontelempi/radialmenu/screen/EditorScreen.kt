@@ -61,14 +61,15 @@ class EditorScreen(
     // ── Build flat row list ──────────────────────────────────────────────────────
     private fun buildRows(): List<ListRow> {
         val rows = mutableListOf<ListRow>()
-        targetList.forEachIndexed { i, item ->
-            rows.add(ListRow(item, targetList, i, 0))
-            if (item.isFolder && item.id in expandedFolders) {
-                item.children.forEachIndexed { j, child ->
-                    rows.add(ListRow(child, item.children, j, 1))
+        fun addRows(list: MutableList<MenuItem>, depth: Int) {
+            list.forEachIndexed { i, item ->
+                rows.add(ListRow(item, list, i, depth))
+                if (item.isFolder && item.id in expandedFolders) {
+                    addRows(item.children, depth + 1)
                 }
             }
         }
+        addRows(targetList, 0)
         return rows
     }
 
@@ -115,11 +116,18 @@ class EditorScreen(
         addDrawableChild(ButtonWidget.builder(Text.literal("+ Add")) {
             val item = MenuItem(ConfigManager.newId(), "New Item", "minecraft:paper", "")
             val row = selectedRow
-            if (row != null && row.depth == 1) {
-                // Add sibling after this child
-                row.parentList.add(row.indexInParent + 1, item)
-            } else {
-                targetList.add(item)
+            when {
+                // Selected item is a folder — add as child
+                row != null && row.item.isFolder -> {
+                    row.item.children.add(item)
+                    expandedFolders.add(row.item.id)
+                }
+                // Selected item is a child — add sibling after it
+                row != null && row.depth > 0 -> {
+                    row.parentList.add(row.indexInParent + 1, item)
+                }
+                // Nothing selected or root item selected — add to root
+                else -> targetList.add(item)
             }
             ConfigManager.save()
             val rows = buildRows()
@@ -162,12 +170,10 @@ class EditorScreen(
 
         addDrawableChild(ButtonWidget.builder(Text.literal("+ Sub")) {
             selectedRow?.let { row ->
-                if (row.depth == 0) {
-                    val child = MenuItem(ConfigManager.newId(), "Sub Item", "minecraft:paper", "")
-                    row.item.children.add(child)
-                    expandedFolders.add(row.item.id)
-                    ConfigManager.save()
-                }
+                val child = MenuItem(ConfigManager.newId(), "Sub Item", "minecraft:paper", "")
+                row.item.children.add(child)
+                expandedFolders.add(row.item.id)
+                ConfigManager.save()
             }
         }.dimensions(bX, bY, 56, 20).build().also { bX += 60 })
 
@@ -190,7 +196,7 @@ class EditorScreen(
         commandField.text = item?.command ?: ""
         labelField.setEditable(item != null)
         iconField.setEditable(item != null)
-        commandField.setEditable(item != null && !item.isFolder)
+        commandField.setEditable(item != null)
     }
 
     // ── Render ──────────────────────────────────────────────────────────────────
@@ -223,14 +229,14 @@ class EditorScreen(
                 }
                 if (rowColor != 0) context.fill(LIST_X, iy, LIST_X + LIST_W, iy + ITEM_H, rowColor)
 
-                // Indent for children
-                val indent = if (row.depth == 1) 16 else 0
+                // Indent scales with depth
+                val indent = row.depth * 12
 
                 // Folder chevron or child dash
                 val prefix = when {
                     row.item.isFolder && row.item.id in expandedFolders -> "▼ "
                     row.item.isFolder -> "▶ "
-                    row.depth == 1 -> "  └ "
+                    row.depth > 0 -> "└ "
                     else -> "  "
                 }
 
@@ -265,8 +271,8 @@ class EditorScreen(
 
             context.drawTextWithShadow(textRenderer, "Command (no /)", fpX, fpY + 88, C_LABEL)
             if (item.isFolder)
-                context.drawTextWithShadow(textRenderer, "⚠ Folder – command ignored",
-                    fpX, fpY + 110, 0xFF_FFAA00.toInt())
+                context.drawTextWithShadow(textRenderer, "▸ Folder command runs on click",
+                    fpX, fpY + 110, 0xFF_55FF55.toInt())
         }
 
         super.render(context, mouseX, mouseY, delta)

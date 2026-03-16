@@ -1,7 +1,9 @@
 package com.bontelempi.radialmenu.screen
 
 import com.bontelempi.radialmenu.config.ConfigManager
+import com.bontelempi.radialmenu.config.ThemeManager
 import com.bontelempi.radialmenu.model.MenuItem
+import com.bontelempi.radialmenu.util.HeadUtil
 import net.minecraft.client.MinecraftClient
 import net.minecraft.client.gui.Click
 import net.minecraft.client.gui.DrawContext
@@ -11,23 +13,31 @@ import net.minecraft.item.ItemStack
 import net.minecraft.registry.Registries
 import net.minecraft.text.Text
 import net.minecraft.util.Identifier
-import com.bontelempi.radialmenu.config.ThemeManager
-import com.bontelempi.radialmenu.util.HeadUtil
 import kotlin.math.*
 
+/**
+ * Multi-level radial menu — up to 4 rings deep.
+ *
+ * Ring 0 (innermost) = root items          INNER_R → RING_RADII[0]
+ * Ring 1             = level-1 sub-menu    RING_RADII[0]+GAP → RING_RADII[1]
+ * Ring 2             = level-2 sub-menu    RING_RADII[1]+GAP → RING_RADII[2]
+ * Ring 3 (outermost) = level-3 sub-menu    RING_RADII[2]+GAP → RING_RADII[3]
+ *
+ * Hovering a folder on ring N opens ring N+1 aligned to that segment's arc.
+ * Moving the mouse back to ring N collapses rings N+1 and deeper.
+ */
 class RadialMenuScreen : Screen(Text.literal("Radial Menu")) {
 
-    private val CENTER_R  = 36f
-    private val INNER_R   = 38f
-    private val MID_R     = 105f
-    private val OUTER_R   = 168f
-    private val GAP       = 3f
-    private val ICON_SIZE = 16
+    // ── Geometry ──────────────────────────────────────────────────────────────
+    private val CENTER_R = 36f
+    private val INNER_R  = 38f
+    private val GAP      = 4f
+    // Outer edge of each ring level (index 0 = innermost ring outer edge)
+    private val RING_RADII = floatArrayOf(105f, 162f, 219f, 276f)
+    private val MAX_LEVELS = 4
+    private val ICON_SIZE  = 16
 
-    // Minimum degrees per outer segment — prevents cramping with many children
-    private val MIN_OUTER_SEG_DEG = 28.0
-
-    // Colours from ThemeManager — read per-frame so theme changes apply live
+    // ── Colours ───────────────────────────────────────────────────────────────
     private val C_INNER_NORMAL    get() = ThemeManager.c(ThemeManager.theme.innerSegment)
     private val C_INNER_HOVER_BTN get() = ThemeManager.c(ThemeManager.theme.hoverHighlight)
     private val C_INNER_FOLDER    get() = ThemeManager.c(ThemeManager.theme.innerFolder)
@@ -40,142 +50,281 @@ class RadialMenuScreen : Screen(Text.literal("Radial Menu")) {
     private val C_TEXT_BRIGHT     get() = ThemeManager.c(ThemeManager.theme.textPrimary)
     private val C_TRANSPARENT     = 0x00_000000
 
+    // ── State ─────────────────────────────────────────────────────────────────
     private val rootItems get() = ConfigManager.config.rootItems
-    private var activeFolderIdx = -1
-    private var hoveredOuterIdx = -1
-    private var hoveredInnerIdx = -1
-    private var mouseInOuter    = false
 
-    private enum class Zone { CENTER, INNER, OUTER, OUTSIDE }
+    /**
+     * Active hover path through the menu tree.
+     * Each entry = the index of the hovered item at that ring level.
+     * activeIndices[0] = which root item is hovered/active
+     * activeIndices[1] = which child of that root item is hovered, etc.
+     * Length = number of rings currently showing (0 = only inner ring showing)
+     */
+    private val activeIndices = mutableListOf<Int>()
 
-    // ── Angle convention ──────────────────────────────────────────────────────
-    // All angles: 0–360° clockwise from TOP (12 o'clock).
-    private fun ringAngleOf(dx: Double, dy: Double): Double =
-        (Math.toDegrees(atan2(dy, dx)) + 90 + 360) % 360
+    /** Which ring level the mouse is currently in (-1 = none/center) */
+    private var mouseRingLevel = -1
+
+    // ── Ring geometry helpers ─────────────────────────────────────────────────
+
+    private fun ringInnerR(level: Int) = if (level == 0) INNER_R else RING_RADII[level - 1] + GAP
+    private fun ringOuterR(level: Int) = RING_RADII[level]
+
+    private fun mouseZoneLevel(mx: Double, my: Double): Int {
+        val d = dist(mx, my)
+        return when {
+            d < CENTER_R -> -2  // centre
+            d < ringInnerR(0) -> -1  // dead zone between centre and ring 0
+            else -> {
+                for (level in 0 until MAX_LEVELS) {
+                    if (d < ringOuterR(level)) return level
+                }
+                MAX_LEVELS  // outside all rings
+            }
+        }
+    }
 
     private fun dist(mx: Double, my: Double) =
         sqrt((mx - width / 2.0).pow(2) + (my - height / 2.0).pow(2))
 
-    private fun mouseZone(mx: Double, my: Double): Zone {
-        val d = dist(mx, my)
-        return when {
-            d < CENTER_R          -> Zone.CENTER
-            d < MID_R - GAP / 2  -> Zone.INNER
-            d < OUTER_R           -> Zone.OUTER
-            else                  -> Zone.OUTSIDE
-        }
-    }
+    private fun ringAngleOf(dx: Double, dy: Double) =
+        (Math.toDegrees(atan2(dy, dx)) + 90 + 360) % 360
 
-    private fun innerIdxForAngle(angleDeg: Double): Int {
-        if (rootItems.isEmpty()) return -1
-        val seg = 360.0 / rootItems.size
-        return (angleDeg / seg).toInt().coerceIn(0, rootItems.lastIndex)
-    }
-
-    // ── Outer ring geometry ───────────────────────────────────────────────────
     /**
-     * Returns (arcStartDeg, segDeg) for the outer ring of the active folder.
+     * Given an angle and the arc geometry of a ring level,
+     * return the segment index the angle falls in, or -1 if outside the arc.
      *
-     * The arc is at least (children.size * MIN_OUTER_SEG_DEG) wide.
-     * If the folder's own inner-ring segment is wide enough, we use that.
-     * Otherwise we expand the arc, keeping it centred on the folder's midpoint,
-     * and clamping so it never wraps beyond 360°.
+     * @param arcStartDeg  Start of the arc in top-based degrees
+     * @param segDeg       Degrees per segment
+     * @param count        Number of segments
      */
-    private fun outerArcGeometry(children: List<MenuItem>): Pair<Double, Double>? {
-        if (children.isEmpty()) return null
-        val innerSeg = 360.0 / rootItems.size
-        val folderMid = innerSeg * activeFolderIdx + innerSeg / 2   // mid of folder in top-based degrees
+    private fun segmentAtAngle(angleDeg: Double, arcStartDeg: Double, segDeg: Double, count: Int): Int {
+        var rel = (angleDeg - arcStartDeg + 360) % 360
+        if (rel >= segDeg * count) return -1
+        return (rel / segDeg).toInt().coerceIn(0, count - 1)
+    }
 
-        val segDeg = maxOf(innerSeg / children.size, MIN_OUTER_SEG_DEG)
-        val totalArc = segDeg * children.size
+    /**
+     * Compute the arc geometry for a given ring level.
+     * Returns (arcStartDeg, segDeg) or null if that level isn't active.
+     *
+     * Level 0 always spans full 360°.
+     * Deeper levels span the arc of the parent segment, expanded if needed.
+     */
+    private fun arcGeometry(level: Int): Pair<Double, Double>? {
+        val items = itemsAtLevel(level) ?: return null
+        if (items.isEmpty()) return null
 
-        // Centre the arc on the folder's midpoint
-        var arcStart = folderMid - totalArc / 2
-        // Normalise to 0–360
-        arcStart = ((arcStart % 360) + 360) % 360
+        if (level == 0) {
+            val segDeg = 360.0 / items.size
+            return Pair(0.0, segDeg)
+        }
+
+        // Parent arc
+        val parentItems = itemsAtLevel(level - 1) ?: return null
+        val parentIdx   = activeIndices.getOrNull(level - 1) ?: return null
+        val (parentArcStart, parentSegDeg) = arcGeometry(level - 1) ?: return null
+        val parentMid   = parentArcStart + parentSegDeg * parentIdx + parentSegDeg / 2
+
+        val minSegDeg = 28.0
+        val segDeg    = maxOf(parentSegDeg / items.size, minSegDeg)
+        val totalArc  = segDeg * items.size
+        val arcStart  = ((parentMid - totalArc / 2) % 360 + 360) % 360
 
         return Pair(arcStart, segDeg)
     }
 
-    private fun outerIdxForAngle(angleDeg: Double): Int {
-        val folder = rootItems.getOrNull(activeFolderIdx) ?: return -1
-        val children = folder.children.ifEmpty { return -1 }
-        val (arcStart, segDeg) = outerArcGeometry(children) ?: return -1
-        val totalArc = segDeg * children.size
-
-        // Compute angle relative to arc start (handles wrap-around)
-        var rel = (angleDeg - arcStart + 360) % 360
-        if (rel > 360 - segDeg * 0.5) rel -= 360  // handle tiny wrap at end
-        if (rel < 0 || rel >= totalArc) return -1
-        return (rel / segDeg).toInt().coerceIn(0, children.lastIndex)
+    /**
+     * Returns the list of items displayed at a given ring level,
+     * or null if that level isn't currently active.
+     */
+    private fun itemsAtLevel(level: Int): List<MenuItem>? {
+        if (level == 0) return rootItems
+        // Need activeIndices[0..level-1] to navigate down the tree
+        if (activeIndices.size < level) return null
+        var items: List<MenuItem> = rootItems
+        for (i in 0 until level) {
+            val idx = activeIndices.getOrNull(i) ?: return null
+            val item = items.getOrNull(idx) ?: return null
+            if (!item.isFolder) return null
+            items = item.children
+        }
+        return items.ifEmpty { null }
     }
+
+    // ── Hover update ──────────────────────────────────────────────────────────
 
     private fun updateHover(mx: Double, my: Double) {
         val cx = width / 2.0; val cy = height / 2.0
-        val zone = mouseZone(mx, my)
+        val level = mouseZoneLevel(mx, my)
         val angle = ringAngleOf(mx - cx, my - cy)
-        mouseInOuter = zone == Zone.OUTER
-        when (zone) {
-            Zone.INNER -> {
-                hoveredInnerIdx = innerIdxForAngle(angle)
-                hoveredOuterIdx = -1
-                val item = rootItems.getOrNull(hoveredInnerIdx)
-                if (item?.isFolder == true) activeFolderIdx = hoveredInnerIdx
-                else if (item != null) activeFolderIdx = -1
+
+        mouseRingLevel = level
+
+        when {
+            level < 0 -> {
+                // Centre or dead zone — collapse all
+                activeIndices.clear()
             }
-            Zone.OUTER -> {
-                hoveredInnerIdx = -1
-                hoveredOuterIdx = outerIdxForAngle(angle)
+            level < MAX_LEVELS -> {
+                val (arcStart, segDeg) = arcGeometry(level) ?: run {
+                    // This level isn't active yet — do nothing
+                    return
+                }
+                val items = itemsAtLevel(level) ?: return
+                val idx = segmentAtAngle(angle, arcStart, segDeg, items.size)
+                if (idx < 0) return
+
+                // Truncate active path to this level and set hovered index
+                while (activeIndices.size > level) activeIndices.removeLast()
+                if (activeIndices.size == level) activeIndices.add(idx)
+                else activeIndices[level] = idx
+
+                // If hovered item is a folder, mark it active so next level renders
+                // (don't push yet — next frame will compute the deeper arc)
             }
-            else -> { hoveredInnerIdx = -1; hoveredOuterIdx = -1 }
         }
     }
 
     // ── Render ────────────────────────────────────────────────────────────────
+
     override fun render(context: DrawContext, mouseX: Int, mouseY: Int, delta: Float) {
         updateHover(mouseX.toDouble(), mouseY.toDouble())
         context.fill(0, 0, width, height, ThemeManager.c(ThemeManager.theme.backgroundDim))
+
         val cx = width / 2; val cy = height / 2
 
-        // Outer ring
-        val folder = rootItems.getOrNull(activeFolderIdx)
-        val children = folder?.children
-        val outerGeo = if (!children.isNullOrEmpty()) outerArcGeometry(children) else null
+        // Determine which level the mouse is in for dimming
+        val activeLevelForDim = if (mouseRingLevel >= 0) mouseRingLevel else 0
 
-        drawRingFast(context, cx, cy, MID_R + GAP, OUTER_R) { dx, dy ->
-            if (outerGeo == null || children.isNullOrEmpty()) return@drawRingFast C_TRANSPARENT
-            val angle = ringAngleOf(dx.toDouble(), dy.toDouble())
-            val idx = outerIdxForAngle(angle)
-            if (idx < 0) C_TRANSPARENT
-            else if (idx == hoveredOuterIdx && mouseInOuter) C_OUTER_HOVER
-            else C_OUTER_NORMAL
-        }
-
-        // Inner ring
-        drawRingFast(context, cx, cy, INNER_R, MID_R) { dx, dy ->
-            if (rootItems.isEmpty()) return@drawRingFast C_TRANSPARENT
-            val angle = ringAngleOf(dx.toDouble(), dy.toDouble())
-            val idx = innerIdxForAngle(angle)
-            val item = rootItems[idx]
-            val isHov = idx == hoveredInnerIdx && !mouseInOuter
-            val isFolderOpen = idx == activeFolderIdx
-            when {
-                mouseInOuter -> blend(if (item.isFolder) C_INNER_FOLDER else C_INNER_NORMAL, C_INNER_DIM, 0.6f)
-                item.isFolder && (isHov || isFolderOpen) -> C_INNER_FOLDER_H
-                item.isFolder -> C_INNER_FOLDER
-                isHov -> C_INNER_HOVER_BTN
-                else -> C_INNER_NORMAL
+        // Draw rings from outermost to innermost so inner overlaps outer
+        val deepestActiveLevel = run {
+            var d = 0
+            for (l in 0 until MAX_LEVELS) {
+                if (itemsAtLevel(l) != null) d = l else break
             }
+            d
         }
 
+        for (level in deepestActiveLevel downTo 0) {
+            drawRingLevel(context, cx, cy, level, activeLevelForDim)
+        }
+
+        // Centre circle
         drawFilledCircle(context, cx, cy, CENTER_R.toInt(), C_CENTER)
         context.drawCenteredTextWithShadow(textRenderer, "✕", cx, cy - 10, C_TEXT_DIM)
         context.drawCenteredTextWithShadow(textRenderer, "E to edit", cx, cy + 2, C_TEXT_DIM)
-        drawInnerLabels(context, cx, cy)
-        drawOuterLabels(context, cx, cy)
+
         drawTooltip(context, cx)
         super.render(context, mouseX, mouseY, delta)
     }
+
+    private fun drawRingLevel(context: DrawContext, cx: Int, cy: Int, level: Int, activeLevel: Int) {
+        val items = itemsAtLevel(level) ?: return
+        val (arcStart, segDeg) = arcGeometry(level) ?: return
+        val innerR = ringInnerR(level)
+        val outerR = ringOuterR(level)
+        val hoveredIdx = activeIndices.getOrNull(level) ?: -1
+        val isInnermost = level == 0
+        val isDimmed = mouseRingLevel >= 0 && level < activeLevel
+
+        drawRingFast(context, cx, cy, innerR, outerR) { dx, dy ->
+            val angle = ringAngleOf(dx.toDouble(), dy.toDouble())
+            val idx = segmentAtAngle(angle, arcStart, segDeg, items.size)
+            if (idx < 0) return@drawRingFast C_TRANSPARENT
+            val item = items[idx]
+            val isHov = idx == hoveredIdx && mouseRingLevel == level
+
+            if (isInnermost) {
+                when {
+                    isDimmed -> blend(if (item.isFolder) C_INNER_FOLDER else C_INNER_NORMAL, C_INNER_DIM, 0.6f)
+                    item.isFolder && isHov -> C_INNER_FOLDER_H
+                    item.isFolder -> C_INNER_FOLDER
+                    isHov -> C_INNER_HOVER_BTN
+                    else -> C_INNER_NORMAL
+                }
+            } else {
+                when {
+                    isHov -> C_OUTER_HOVER
+                    else  -> C_OUTER_NORMAL
+                }
+            }
+        }
+
+        // Labels
+        items.forEachIndexed { i, item ->
+            val midDeg = arcStart + segDeg * i + segDeg / 2
+            val midRad = Math.toRadians(midDeg - 90)
+            val midDist = (innerR + outerR) / 2
+            val ix = cx + (cos(midRad) * midDist).toInt()
+            val iy = cy + (sin(midRad) * midDist).toInt()
+            val isHov = i == hoveredIdx && mouseRingLevel == level
+            val alpha = if (isDimmed) 0.45f else 1.0f
+            val tc = if (isDimmed) C_TEXT_DIM else if (isHov) C_TEXT_BRIGHT else C_TEXT_DIM
+
+            drawItemIcon(context, item.iconItem, ix - ICON_SIZE / 2, iy - ICON_SIZE / 2 - 8, alpha, item.headTexture)
+            context.drawCenteredTextWithShadow(textRenderer, item.label, ix, iy + 10, tc)
+            if (item.isFolder) {
+                val arrow = if (i == hoveredIdx && activeIndices.size > level + 1) "◀" else "▶"
+                context.drawCenteredTextWithShadow(textRenderer, arrow, ix, iy + 20,
+                    if (isHov) C_TEXT_BRIGHT else C_TEXT_DIM)
+            }
+        }
+    }
+
+    private fun drawTooltip(context: DrawContext, cx: Int) {
+        val level = mouseRingLevel.coerceAtLeast(0)
+        val idx   = activeIndices.getOrNull(level) ?: return
+        val items = itemsAtLevel(level) ?: return
+        val item  = items.getOrNull(idx) ?: return
+
+        val hint = when {
+            item.isFolder && item.command.isBlank() -> "▸ ${item.label}  (${item.children.size} items)"
+            item.isFolder -> "/${item.command}  •  ▸ ${item.children.size} items"
+            else -> "/${item.command}"
+        }
+        val outerY = (height / 2 + RING_RADII[minOf(level, RING_RADII.lastIndex)] + 14).toInt()
+        context.drawCenteredTextWithShadow(textRenderer, hint, cx, outerY, C_TEXT_DIM)
+    }
+
+    // ── Input ─────────────────────────────────────────────────────────────────
+
+    override fun mouseClicked(click: Click, doubled: Boolean): Boolean {
+        val mx = click.x(); val my = click.y()
+        if (click.button() == 1) { close(); return true }
+
+        val level = mouseZoneLevel(mx, my)
+        when {
+            level == -2 -> { close(); return true }  // centre
+            level in 0 until MAX_LEVELS -> {
+                val idx  = activeIndices.getOrNull(level) ?: return true
+                val item = itemsAtLevel(level)?.getOrNull(idx) ?: return true
+                executeCommand(item.command)
+                return true
+            }
+        }
+        return super.mouseClicked(click, doubled)
+    }
+
+    private fun executeCommand(cmd: String) {
+        if (cmd.isBlank()) return
+        close()
+        MinecraftClient.getInstance().send {
+            MinecraftClient.getInstance().player?.networkHandler?.sendChatCommand(cmd)
+        }
+    }
+
+    override fun keyPressed(input: KeyInput): Boolean {
+        if (input.key() == 69) {
+            MinecraftClient.getInstance().setScreen(EditorScreen(ConfigManager.config.rootItems))
+            return true
+        }
+        return super.keyPressed(input)
+    }
+
+    override fun shouldPause() = false
+
+    // ── Scanline ring renderer ─────────────────────────────────────────────────
 
     private fun drawRingFast(
         context: DrawContext,
@@ -185,7 +334,7 @@ class RadialMenuScreen : Screen(Text.literal("Radial Menu")) {
     ) {
         val outerR2 = outerR * outerR
         val innerR2 = innerR * innerR
-        val iOuter = outerR.toInt()
+        val iOuter  = outerR.toInt()
 
         for (dy in -iOuter..iOuter) {
             val dy2 = dy * dy.toFloat()
@@ -214,103 +363,6 @@ class RadialMenuScreen : Screen(Text.literal("Radial Menu")) {
         }
     }
 
-    private fun drawInnerLabels(context: DrawContext, cx: Int, cy: Int) {
-        if (rootItems.isEmpty()) {
-            context.drawCenteredTextWithShadow(textRenderer, "No items – press E to edit", cx, cy - 4, C_TEXT_DIM)
-            return
-        }
-        val segDeg = 360.0 / rootItems.size
-        rootItems.forEachIndexed { i, item ->
-            val midRad = Math.toRadians(segDeg * i + segDeg / 2 - 90)
-            val midDist = (INNER_R + MID_R) / 2
-            val ix = cx + (cos(midRad) * midDist).toInt()
-            val iy = cy + (sin(midRad) * midDist).toInt()
-            val isHov = i == hoveredInnerIdx && !mouseInOuter
-            val isFolderOpen = i == activeFolderIdx
-            val tc = if (mouseInOuter) C_TEXT_DIM else if (isHov || isFolderOpen) C_TEXT_BRIGHT else C_TEXT_DIM
-            drawItemIcon(context, item.iconItem, ix - ICON_SIZE / 2, iy - ICON_SIZE / 2 - 8,
-                if (mouseInOuter) 0.45f else 1.0f, item.headTexture)
-            context.drawCenteredTextWithShadow(textRenderer, item.label, ix, iy + 10, tc)
-            if (item.isFolder)
-                context.drawCenteredTextWithShadow(textRenderer,
-                    if (isFolderOpen) "◀" else "▶", ix, iy + 20,
-                    if (isFolderOpen) C_TEXT_BRIGHT else C_TEXT_DIM)
-        }
-    }
-
-    private fun drawOuterLabels(context: DrawContext, cx: Int, cy: Int) {
-        val folder = rootItems.getOrNull(activeFolderIdx) ?: return
-        val children = folder.children.ifEmpty { return }
-        val (arcStart, segDeg) = outerArcGeometry(children) ?: return
-
-        children.forEachIndexed { i, item ->
-            val midRad = Math.toRadians(arcStart + segDeg * i + segDeg / 2 - 90)
-            val midDist = (MID_R + GAP + OUTER_R) / 2
-            val ix = cx + (cos(midRad) * midDist).toInt()
-            val iy = cy + (sin(midRad) * midDist).toInt()
-            val isHov = i == hoveredOuterIdx && mouseInOuter
-            drawItemIcon(context, item.iconItem, ix - ICON_SIZE / 2, iy - ICON_SIZE / 2 - 8, 1.0f, item.headTexture)
-            context.drawCenteredTextWithShadow(textRenderer, item.label, ix, iy + 10,
-                if (isHov) C_TEXT_BRIGHT else C_TEXT_DIM)
-        }
-    }
-
-    private fun drawTooltip(context: DrawContext, cx: Int) {
-        val hint = when {
-            mouseInOuter && hoveredOuterIdx >= 0 ->
-                rootItems.getOrNull(activeFolderIdx)?.children?.getOrNull(hoveredOuterIdx)?.command?.let { "/$it" }
-            !mouseInOuter && hoveredInnerIdx >= 0 -> {
-                val item = rootItems.getOrNull(hoveredInnerIdx)
-                when {
-                    item == null  -> null
-                    item.isFolder -> "▸ ${item.label}  (${item.children.size} items)"
-                    else          -> "/${item.command}"
-                }
-            }
-            else -> null
-        } ?: return
-        context.drawCenteredTextWithShadow(textRenderer, hint, cx, (height / 2 + OUTER_R + 14).toInt(), C_TEXT_DIM)
-    }
-
-    // ── Input ─────────────────────────────────────────────────────────────────
-    override fun mouseClicked(click: Click, doubled: Boolean): Boolean {
-        val mx = click.x(); val my = click.y()
-        if (click.button() == 1) { close(); return true }
-        when (mouseZone(mx, my)) {
-            Zone.CENTER -> { close(); return true }
-            Zone.OUTER  -> {
-                val child = rootItems.getOrNull(activeFolderIdx)?.children?.getOrNull(hoveredOuterIdx)
-                if (child != null && !child.isFolder) executeCommand(child.command)
-                return true
-            }
-            Zone.INNER  -> {
-                val item = rootItems.getOrNull(hoveredInnerIdx)
-                if (item != null && !item.isFolder) executeCommand(item.command)
-                return true
-            }
-            else -> return super.mouseClicked(click, doubled)
-        }
-    }
-
-    private fun executeCommand(cmd: String) {
-        if (cmd.isBlank()) return
-        close()
-        MinecraftClient.getInstance().send {
-            MinecraftClient.getInstance().player?.networkHandler?.sendChatCommand(cmd)
-        }
-    }
-
-    override fun keyPressed(input: KeyInput): Boolean {
-        if (input.key() == 69) {
-            MinecraftClient.getInstance().setScreen(EditorScreen(ConfigManager.config.rootItems))
-            return true
-        }
-        return super.keyPressed(input)
-    }
-
-    override fun shouldPause() = false
-
-    // ── Drawing helpers ───────────────────────────────────────────────────────
     private fun drawFilledCircle(context: DrawContext, cx: Int, cy: Int, radius: Int, color: Int) {
         for (y in -radius..radius) {
             val hw = sqrt((radius * radius - y * y).toDouble()).toInt()
@@ -325,6 +377,8 @@ class RadialMenuScreen : Screen(Text.literal("Radial Menu")) {
         if (alpha < 0.99f) context.fill(x, y, x + ICON_SIZE, y + ICON_SIZE, argb(1f - alpha, 0f, 0f, 0f))
     }
 
+    // ── Colour / item helpers ─────────────────────────────────────────────────
+
     private fun argb(a: Float, r: Float, g: Float, b: Float) =
         ((a * 255).toInt() shl 24) or ((r * 255).toInt() shl 16) or ((g * 255).toInt() shl 8) or (b * 255).toInt()
 
@@ -336,7 +390,6 @@ class RadialMenuScreen : Screen(Text.literal("Radial Menu")) {
     }
 
     private fun itemStackOf(id: String): ItemStack {
-        // Detect base64 skin value — they're long, contain no colons, and decode to JSON
         if (id.length > 40 && !id.contains(':')) {
             val stack = HeadUtil.buildStack(id)
             if (stack.item != net.minecraft.item.Items.AIR) return stack
