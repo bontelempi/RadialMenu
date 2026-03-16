@@ -1,9 +1,6 @@
 # Radial Menu
 
-A pie menu for Hypixel SkyBlock. Bind commands to a ring, execute them with one click.
-
-![Minecraft Version](https://img.shields.io/badge/Minecraft-1.21.10-green)
-![Fabric](https://img.shields.io/badge/Loader-Fabric-blue)
+Too many keybinds? This is the solution.
 
 
 ## What it does
@@ -19,6 +16,7 @@ Supports sub-menus, custom icons (including custom player heads), and full colou
 <img width="2560" height="1440" alt="Screenshot 2026-03-16 at 6 07 21 am" src="https://github.com/user-attachments/assets/3c7a5f67-0b0c-4a26-827f-067e954aeccf" />
 
 <img width="2560" height="1440" alt="Screenshot 2026-03-16 at 6 07 32 am" src="https://github.com/user-attachments/assets/7751688b-2dd0-4c5e-947d-5ad472af735f" />
+
 
 
 ## Install
