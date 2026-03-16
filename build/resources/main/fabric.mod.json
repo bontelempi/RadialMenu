@@ -15,7 +15,7 @@
     "client": [
       {
         "adapter": "kotlin",
-        "value": "com.yourname.radialmenu.RadialMenuMod"
+        "value": "com.bontelempi.radialmenu.RadialMenuMod"
       }
     ]
   },
