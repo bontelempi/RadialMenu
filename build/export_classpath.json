@@ -1,0 +1,16 @@
+{
+  "projectPath": ":",
+  "classpaths": {
+    "test": [
+      "/Users/jakehumphrey/Desktop/radial-menu/build/classes/java/test",
+      "/Users/jakehumphrey/Desktop/radial-menu/build/classes/kotlin/test",
+      "/Users/jakehumphrey/Desktop/radial-menu/build/resources/test"
+    ],
+    "main": [
+      "/Users/jakehumphrey/Desktop/radial-menu/build/classes/java/main",
+      "/Users/jakehumphrey/Desktop/radial-menu/build/classes/kotlin/main",
+      "/Users/jakehumphrey/Desktop/radial-menu/build/resources/main",
+      "/Users/jakehumphrey/Desktop/radial-menu/build/devlibs/radial-menu-0.1.0-dev.jar"
+    ]
+  }
+}
