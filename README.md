@@ -18,7 +18,6 @@ Supports sub-menus, custom icons (including custom player heads), and full colou
 <img width="2560" height="1440" alt="Screenshot 2026-03-16 at 6 07 32 am" src="https://github.com/user-attachments/assets/7751688b-2dd0-4c5e-947d-5ad472af735f" />
 
 
-
 ## Install
 
 Drop into your mods folder alongside:
