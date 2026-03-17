@@ -51,7 +51,7 @@ class RadialMenuScreen : Screen(Text.literal("Radial Menu")) {
     private val C_TRANSPARENT     = 0x00_000000
 
     // ── State ─────────────────────────────────────────────────────────────────
-    private val rootItems get() = ConfigManager.config.rootItems
+    private val rootItems get() = ConfigManager.rootItems
 
     /**
      * Active hover path through the menu tree.
@@ -316,7 +316,7 @@ class RadialMenuScreen : Screen(Text.literal("Radial Menu")) {
 
     override fun keyPressed(input: KeyInput): Boolean {
         if (input.key() == 69) {
-            MinecraftClient.getInstance().setScreen(EditorScreen(ConfigManager.config.rootItems))
+            MinecraftClient.getInstance().setScreen(EditorScreen())
             return true
         }
         return super.keyPressed(input)

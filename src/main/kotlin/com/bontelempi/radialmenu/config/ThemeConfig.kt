@@ -8,16 +8,22 @@ import java.nio.file.Files
 
 @Serializable
 data class ThemeColors(
-    // ARGB hex ints stored as longs to avoid sign issues in JSON
-    val backgroundDim:    Long = 0x77_000000L,
-    val innerSegment:     Long = 0xCC_1A1A2EL,
-    val innerFolder:      Long = 0xCC_0F1633L,
-    val outerSegment:     Long = 0xD1_0F2033L,
-    val hoverHighlight:   Long = 0xD9_E94560L,
-    val centerCircle:     Long = 0xFF_0D0D0DL,
-    val textPrimary:      Long = 0xFF_FFFFFFL,
-    val textDim:          Long = 0xFF_888899L,
-)
+    val backgroundDim:  Long = 0x77_000000L,
+    val ring0:          Long = 0xCC_1A1A2EL,
+    val ring0Folder:    Long = 0xCC_0F1633L,
+    val ring1:          Long = 0xD1_0F2033L,
+    val ring2:          Long = 0xD1_0A1A2AL,
+    val ring3:          Long = 0xD1_071520L,
+    val hoverHighlight: Long = 0xD9_E94560L,
+    val centerCircle:   Long = 0x00_000000L,
+    val textPrimary:    Long = 0xFF_FFFFFFL,
+    val textDim:        Long = 0xFF_888899L,
+) {
+    // Legacy compat aliases used by RadialMenuScreen
+    val innerSegment  get() = ring0
+    val innerFolder   get() = ring0Folder
+    val outerSegment  get() = ring1
+}
 
 object ThemeManager {
     private val json = Json { prettyPrint = true; ignoreUnknownKeys = true; encodeDefaults = true }
@@ -44,6 +50,5 @@ object ThemeManager {
         save()
     }
 
-    // Convenience — returns Int for DrawContext
     fun c(v: Long) = v.toInt()
 }
