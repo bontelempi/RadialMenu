@@ -268,6 +268,7 @@ class EditorScreen : Screen(Text.literal("Radial Menu Editor")) {
                     fx, fy + 118, 0xFF_55FF55.toInt())
         }
 
+        if (confirmDeletePreset) drawDeleteConfirm(context)
         super.render(context, mouseX, mouseY, delta)
         if (showIconTooltip) drawIconTooltip(context)
     }
@@ -366,6 +367,20 @@ class EditorScreen : Screen(Text.literal("Radial Menu Editor")) {
         val mx = click.x().toInt(); val my = click.y().toInt()
         val pby = TITLE_H + 2
         val presets = ConfigManager.config.presets
+
+        // Confirm delete modal — checked first so it intercepts all clicks
+        if (confirmDeletePreset) {
+            val mw = 200; val mh = 70
+            val modX = width / 2 - mw / 2; val modY = height / 2 - mh / 2
+            if (mx in (modX + 10)..(modX + 84) && my in (modY + 38)..(modY + 56)) {
+                ConfigManager.deletePreset(ConfigManager.activePresetIndex)
+                selectedRow = null; scrollOffset = 0; populateFields()
+                confirmDeletePreset = false
+            } else {
+                confirmDeletePreset = false
+            }
+            return true
+        }
 
         // Preset bar
         if (my in pby..(pby + PRESET_H)) {
