@@ -2,25 +2,30 @@
 
 Too many keybinds? This is the solution.
 
+## Features
 
-## What it does
-
-Press **R** → move mouse → click. Command runs. Done.
-
-Supports sub-menus, custom icons (including custom player heads), and full colour theming.
-
-<img width="2560" height="1440" alt="Screenshot 2026-03-16 at 6 06 51 am" src="https://github.com/user-attachments/assets/586c2f26-ba07-4bbc-b91d-482dcdfa7c3d" />
-
-<img width="2560" height="1440" alt="Screenshot 2026-03-16 at 6 07 01 am" src="https://github.com/user-attachments/assets/df8bf0fa-3678-42bd-9373-19270a6c767b" />
-
-<img width="2560" height="1440" alt="Screenshot 2026-03-16 at 6 07 21 am" src="https://github.com/user-attachments/assets/3c7a5f67-0b0c-4a26-827f-067e954aeccf" />
-
-<img width="2560" height="1440" alt="Screenshot 2026-03-16 at 6 07 32 am" src="https://github.com/user-attachments/assets/7751688b-2dd0-4c5e-947d-5ad472af735f" />
+- **Radial menu** — press R to open, move mouse to select, click to execute
+<img width="1830" height="1080" alt="Screenshot_2026-03-17_at_5_19_31_pm_cropped" src="https://github.com/user-attachments/assets/f2e05c49-9ee4-421f-a04b-5cdc6a6a7143" />
 
 
-## Install
+- **Sub-menus** — up to 4 rings deep, expanding outward on hover. (Sub-menus can run commands aswell)
+<img width="1830" height="1080" alt="Screenshot_2026-03-17_at_5_19_45_pm_cropped" src="https://github.com/user-attachments/assets/552a7cf9-1ecf-4fc6-89f4-ef0dd0854de0" />
 
-Drop into your mods folder alongside:
+
+- **Presets** — up to 10 named menu configs, each with its own keybind. Cycle through presets with a hotkey.
+- **Custom icons** — any Minecraft item ID, or a custom player head from minecraft-heads.com
+- **In-game editor** — add, delete, reorder, and nest items without leaving the game
+<img width="1830" height="1080" alt="Screenshot_2026-03-17_at_5_20_09_pm_cropped" src="https://github.com/user-attachments/assets/e28d8a58-707e-4621-b613-8d6692a72150" />
+
+
+- **Themes** — per-ring colour control with RGB sliders and 5 built-in palettes
+<img width="1830" height="1080" alt="Screenshot_2026-03-17_at_5_20_20_pm_cropped" src="https://github.com/user-attachments/assets/234dbb9d-ee8e-414d-a3ee-9ec772f803b5" />
+<img width="1830" height="1080" alt="Screenshot_2026-03-17_at_5_20_34_pm_cropped" src="https://github.com/user-attachments/assets/8ce91583-e4da-4572-966e-b39bdadcd85e" />
+
+
+
+## Requires
+
 - [Fabric API](https://modrinth.com/mod/fabric-api)
 - [Fabric Language Kotlin](https://modrinth.com/mod/fabric-language-kotlin)
 
@@ -35,12 +40,7 @@ Drop into your mods folder alongside:
 | **Right click / Escape** | Close |
 | **E** (in menu) | Open editor |
 
-
-## Editor
-
-- **Click a folder** to expand its children inline
-- **Icon field** accepts a Minecraft item ID or a base64 value from [minecraft-heads.com](https://minecraft-heads.com) for custom heads
-- **🎨 Theme** button to customise all colours
+Other controls such as preset cycle can be bound within the default Minecraft keybinds menu.
 
 
 ## Config
