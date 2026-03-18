@@ -65,6 +65,10 @@ class RadialMenuScreen : Screen(Text.literal("Radial Menu")) {
     /** Which ring level the mouse is currently in (-1 = none/center) */
     private var mouseRingLevel = -1
 
+    // Centre UI
+    // Tip dismiss button bounds (set during render)
+    private var tipDismissX = 0; private var tipDismissY = 0; private var tipDismissSize = 8
+
     // ── Ring geometry helpers ─────────────────────────────────────────────────
 
     private fun ringInnerR(level: Int) = if (level == 0) INNER_R else RING_RADII[level - 1] + GAP
@@ -212,10 +216,10 @@ class RadialMenuScreen : Screen(Text.literal("Radial Menu")) {
 
         // Centre circle
         drawFilledCircle(context, cx, cy, CENTER_R.toInt(), C_CENTER)
-        context.drawCenteredTextWithShadow(textRenderer, "✕", cx, cy - 10, C_TEXT_DIM)
-        context.drawCenteredTextWithShadow(textRenderer, "E to edit", cx, cy + 2, C_TEXT_DIM)
+        drawCentre(context, cx, cy, mouseX, mouseY)
 
         drawTooltip(context, cx)
+
         super.render(context, mouseX, mouseY, delta)
     }
 
@@ -272,6 +276,38 @@ class RadialMenuScreen : Screen(Text.literal("Radial Menu")) {
         }
     }
 
+    private fun drawCentre(context: DrawContext, cx: Int, cy: Int, mouseX: Int, mouseY: Int) {
+        val hasMultiple = ConfigManager.config.presets.size > 1
+
+        if (hasMultiple) {
+            // < X > on one line, preset name with more space below
+            val leftHov  = mouseX in (cx - 28)..(cx - 14) && mouseY in (cy - 10)..(cy + 2)
+            val rightHov = mouseX in (cx + 14)..(cx + 28) && mouseY in (cy - 10)..(cy + 2)
+            context.drawCenteredTextWithShadow(textRenderer, "<", cx - 20, cy - 10,
+                if (leftHov) C_TEXT_BRIGHT else C_TEXT_DIM)
+            context.drawCenteredTextWithShadow(textRenderer, "✕", cx, cy - 10, C_TEXT_DIM)
+            context.drawCenteredTextWithShadow(textRenderer, ">", cx + 20, cy - 10,
+                if (rightHov) C_TEXT_BRIGHT else C_TEXT_DIM)
+            // Preset name — more space below arrows
+            val name = ConfigManager.activePreset.name
+            context.drawCenteredTextWithShadow(textRenderer, name, cx, cy + 4, C_TEXT_DIM)
+        } else {
+            context.drawCenteredTextWithShadow(textRenderer, "✕", cx, cy - 4, C_TEXT_DIM)
+        }
+
+        // One-time "E to edit" tip — placed well below the outermost ring
+        if (!ConfigManager.config.editTipDismissed) {
+            val tipY = height - 30
+            val tipText = "E to edit"
+            val tipW = textRenderer.getWidth(tipText)
+            val tipX = cx - tipW / 2
+            context.drawTextWithShadow(textRenderer, tipText, tipX, tipY, C_TEXT_DIM)
+            tipDismissX = tipX + tipW + 4
+            tipDismissY = tipY
+            context.drawTextWithShadow(textRenderer, "✕", tipDismissX, tipDismissY, C_TEXT_DIM)
+        }
+    }
+
     private fun drawTooltip(context: DrawContext, cx: Int) {
         val level = mouseRingLevel.coerceAtLeast(0)
         val idx   = activeIndices.getOrNull(level) ?: return
@@ -293,9 +329,26 @@ class RadialMenuScreen : Screen(Text.literal("Radial Menu")) {
         val mx = click.x(); val my = click.y()
         if (click.button() == 1) { close(); return true }
 
+        // Tip dismiss
+        if (!ConfigManager.config.editTipDismissed) {
+            if (mx.toInt() in tipDismissX..(tipDismissX + 8) && my.toInt() in tipDismissY..(tipDismissY + 10)) {
+                ConfigManager.dismissEditTip()
+                return true
+            }
+        }
+
         val level = mouseZoneLevel(mx, my)
         when {
-            level == -2 -> { close(); return true }  // centre
+            level == -2 -> {
+                val cx = width / 2; val cy = height / 2
+                val mxi = mx.toInt(); val myi = my.toInt()
+                // Check < > arrows
+                if (ConfigManager.config.presets.size > 1) {
+                    if (mxi in (cx - 28)..(cx - 14) && myi in (cy - 10)..(cy + 2)) { cyclePreset(-1); return true }
+                    if (mxi in (cx + 14)..(cx + 28) && myi in (cy - 10)..(cy + 2)) { cyclePreset(1);  return true }
+                }
+                close(); return true
+            }
             level in 0 until MAX_LEVELS -> {
                 val idx  = activeIndices.getOrNull(level) ?: return true
                 val item = itemsAtLevel(level)?.getOrNull(idx) ?: return true
@@ -315,11 +368,22 @@ class RadialMenuScreen : Screen(Text.literal("Radial Menu")) {
     }
 
     override fun keyPressed(input: KeyInput): Boolean {
-        if (input.key() == 69) {
-            MinecraftClient.getInstance().setScreen(EditorScreen())
-            return true
+        when (input.key()) {
+            69 -> { // E
+                MinecraftClient.getInstance().setScreen(EditorScreen())
+                return true
+            }
+            65 -> { cyclePreset(-1); return true } // A
+            68 -> { cyclePreset(1);  return true } // D
         }
         return super.keyPressed(input)
+    }
+
+    private fun cyclePreset(dir: Int) {
+        val size = ConfigManager.config.presets.size
+        if (size <= 1) return
+        val next = (ConfigManager.activePresetIndex + dir + size) % size
+        ConfigManager.switchPreset(next)
     }
 
     override fun shouldPause() = false

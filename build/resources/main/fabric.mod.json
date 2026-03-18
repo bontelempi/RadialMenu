@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "id": "radialmenu",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "name": "Radial Menu",
   "description": "A customizable radial command menu for Hypixel SkyBlock",
   "icon": "icon.png",

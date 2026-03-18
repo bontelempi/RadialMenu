@@ -20,6 +20,7 @@ data class Preset(
 data class MenuConfig(
     val presets: MutableList<Preset> = mutableListOf(),
     val activePresetIndex: Int = 0,
+    val editTipDismissed: Boolean = false,
     // Legacy field for migration
     val rootItems: MutableList<MenuItem>? = null
 )
@@ -118,6 +119,11 @@ object ConfigManager {
     fun setPresetKeybind(index: Int, keyCode: Int) {
         val preset = config.presets.getOrNull(index) ?: return
         config.presets[index] = preset.copy(keybindKey = keyCode)
+        save()
+    }
+
+    fun dismissEditTip() {
+        config = config.copy(editTipDismissed = true)
         save()
     }
 
