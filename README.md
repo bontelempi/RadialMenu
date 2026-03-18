@@ -2,6 +2,18 @@
 
 Too many keybinds? This is the solution.
 
+
+## Controls
+
+| | |
+|---|---|
+| **R** (customisable) | Open menu |
+| **A / D** (in menu) | Cycle presets |
+| **Mouse** | Hover to select |
+| **Left click** | Execute |
+| **Right click / Escape** | Close |
+| **E** (in menu) | Open editor |
+
 ## Features
 
 - **Radial menu** — press R to open, move mouse to select, click to execute
@@ -22,16 +34,6 @@ Too many keybinds? This is the solution.
 - [Fabric API](https://modrinth.com/mod/fabric-api)
 - [Fabric Language Kotlin](https://modrinth.com/mod/fabric-language-kotlin)
 
-## Controls
-
-| | |
-|---|---|
-| **R** (rebindable) | Open menu |
-| **Mouse** | Hover to select |
-| **Left click** | Execute |
-| **A / D** | Cycle presets |
-| **Right click / Escape** | Close |
-| **E** (in menu) | Open editor |
 
 ## Config
 
