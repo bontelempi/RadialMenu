@@ -1,6 +1,7 @@
 package com.bontelempi.radialmenu.config
 
 import com.bontelempi.radialmenu.model.MenuItem
+import com.bontelempi.radialmenu.config.ThemeColors
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -12,8 +13,10 @@ import java.util.UUID
 data class Preset(
     val id: String,
     val name: String,
-    val keybindKey: Int = -1,   // GLFW key code, -1 = unbound
-    val rootItems: MutableList<MenuItem> = mutableListOf()
+    val keybindKey: Int = -1,
+    val rootItems: MutableList<MenuItem> = mutableListOf(),
+    val themeRef: String? = null,           // name of a library theme
+    val themeOverride: ThemeColors? = null  // per-preset custom colours
 )
 
 @Serializable
@@ -119,6 +122,24 @@ object ConfigManager {
     fun setPresetKeybind(index: Int, keyCode: Int) {
         val preset = config.presets.getOrNull(index) ?: return
         config.presets[index] = preset.copy(keybindKey = keyCode)
+        save()
+    }
+
+    fun setPresetThemeRef(index: Int, themeName: String) {
+        val preset = config.presets.getOrNull(index) ?: return
+        config.presets[index] = preset.copy(themeRef = themeName, themeOverride = null)
+        save()
+    }
+
+    fun setPresetThemeOverride(index: Int, colors: ThemeColors) {
+        val preset = config.presets.getOrNull(index) ?: return
+        config.presets[index] = preset.copy(themeOverride = colors, themeRef = null)
+        save()
+    }
+
+    fun clearPresetTheme(index: Int) {
+        val preset = config.presets.getOrNull(index) ?: return
+        config.presets[index] = preset.copy(themeRef = null, themeOverride = null)
         save()
     }
 

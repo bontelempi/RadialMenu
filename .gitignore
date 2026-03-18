@@ -1,0 +1,20 @@
+# Build output
+build/
+out/
+
+# Gradle
+.gradle/
+gradle/wrapper/gradle-wrapper.jar
+
+# IDE
+.idea/
+*.iml
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Dev jars
+*-dev.jar
+*-sources.jar
